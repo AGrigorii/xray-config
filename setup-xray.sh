@@ -141,7 +141,7 @@ main() {
         exit 1
     fi
     
-    XRAY_VERSION=$(xray version | head -n 1)
+    XRAY_VERSION="$(xray version | head -n 1)"
     success "Xray-core установлен: $XRAY_VERSION"
     
     # Шаг 2: Генерация конфигурации
