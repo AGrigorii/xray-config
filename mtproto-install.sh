@@ -13,20 +13,20 @@ TELEMT_BIN="${TELEMT_BIN:-/bin/telemt}"
 TELEMT_CONF_DIR="${TELEMT_CONF_DIR:-/etc/telemt}"
 TELEMT_CONF_FILE="${TELEMT_CONF_FILE:-/etc/telemt/telemt.toml}"
 TELEMT_SERVICE_FILE="${TELEMT_SERVICE_FILE:-/etc/systemd/system/telemt.service}"
-TELEMT_PORT="${TELEMT_PORT:-443}"
+TELEMT_PORT="${TELEMT_PORT:-8443}"
 TELEMT_TLS_DOMAIN="${TELEMT_TLS_DOMAIN:-music.yandex.ru}"
 TELEMT_USERNAME="${TELEMT_USERNAME:-hello}"
 TELEMT_SECRET="${TELEMT_SECRET:-$(openssl rand -hex 16)}"
 
-echo "[1/6] Installing dependencies..."
+echo "[1/7] Installing dependencies..."
 apt-get install -y curl wget tar jq
 
-echo "[2/6] Downloading and installing telemt binary..."
+echo "[2/7] Downloading and installing telemt binary..."
 wget -qO- "https://github.com/telemt/telemt/releases/latest/download/telemt-$(uname -m)-linux-$(ldd --version 2>&1 | grep -iq musl && echo musl || echo gnu).tar.gz" | tar -xz
 install -m 0755 telemt "${TELEMT_BIN}"
 rm -f telemt
 
-echo "[3/6] Creating config ${TELEMT_CONF_FILE}..."
+echo "[3/7] Creating config ${TELEMT_CONF_FILE}..."
 mkdir -p "${TELEMT_CONF_DIR}"
 
 if [[ -f "${TELEMT_CONF_FILE}" ]]; then
@@ -63,14 +63,14 @@ tls_domain = "${TELEMT_TLS_DOMAIN}"
 ${TELEMT_USERNAME} = "${TELEMT_SECRET}"
 EOF
 
-echo "[4/6] Creating service user and ownership..."
+echo "[4/7] Creating service user and ownership..."
 if ! id "${TELEMT_USER}" >/dev/null 2>&1; then
   useradd -d "${TELEMT_HOME}" -m -r -U "${TELEMT_USER}"
 fi
 
 chown -R "${TELEMT_USER}:${TELEMT_GROUP}" "${TELEMT_CONF_DIR}"
 
-echo "[5/6] Writing systemd unit ${TELEMT_SERVICE_FILE}..."
+echo "[5/7] Writing systemd unit ${TELEMT_SERVICE_FILE}..."
 cat > "${TELEMT_SERVICE_FILE}" <<EOF
 [Unit]
 Description=Telemt
@@ -93,7 +93,24 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 EOF
 
-echo "[6/6] Enabling and starting service..."
+echo "[6/7] Opening firewall port ${TELEMT_PORT}/tcp..."
+if command -v ufw >/dev/null 2>&1; then
+  if ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow "${TELEMT_PORT}/tcp" comment 'telemt (Telegram MTProto)' 2>/dev/null \
+      || ufw allow "${TELEMT_PORT}/tcp"
+    echo "UFW: port ${TELEMT_PORT}/tcp allowed."
+  else
+    echo "UFW is installed but inactive; skipping. Enable it with: sudo ufw enable"
+  fi
+elif command -v firewall-cmd >/dev/null 2>&1; then
+  firewall-cmd --permanent --add-port="${TELEMT_PORT}/tcp"
+  firewall-cmd --reload
+  echo "firewalld: port ${TELEMT_PORT}/tcp allowed."
+else
+  echo "No supported firewall found (ufw/firewalld). Allow TCP ${TELEMT_PORT} manually if needed."
+fi
+
+echo "[7/7] Enabling and starting service..."
 systemctl daemon-reload
 systemctl enable telemt
 systemctl restart telemt
